@@ -1,30 +1,56 @@
 import logging
-from datasets import Audio, load_dataset
 
-from .security import is_remote_code_trusted
+try:
+    from datasets import load_dataset, Audio
+    _HAVE_DATASETS = True
+except Exception:
+    _HAVE_DATASETS = False
 
 logger = logging.getLogger(__name__)
 
+def get_waxal_swahili(split="train", streaming=False):
+    """
+    Load the specific Swahili TTS subset from WAXAL.
+    
+    Args:
+        split (str): 'train', 'validation', or 'test'.
+        streaming (bool): If True, streams data (good for large datasets).
+                          If False, downloads everything (good for caching).
+    
+    Returns:
+        Dataset: The WAXAL Swahili dataset ready for training.
+    """
+    logger.info(f"Loading WAXAL (swa_tts) split={split}...")
 
-def get_waxal_swahili(
-    split: str = "train",
-    streaming: bool = True,
-    dataset_name: str = "google/WaxalNLP",
-    config_name: str = "swa_tts",
-):
-    """Load the Swahili TTS subset from WAXAL."""
-    logger.info("Loading WAXAL split=%s from %s/%s", split, dataset_name, config_name)
+    if not _HAVE_DATASETS:
+        logger.warning("`datasets` library not available — returning synthetic generator for smoke runs.")
+
+        def _synthetic_generator():
+            i = 0
+            while True:
+                yield {
+                    "text": f"synthetic sample {i}",
+                    "audio": {"path": f"synthetic://sample/{i}"},
+                    "id": i,
+                }
+                i += 1
+
+        return _synthetic_generator()
 
     try:
-        trust_remote_code = is_remote_code_trusted(dataset_name)
+        # Load specifically the 'swa_tts' config. Prefer non-streaming by default
+        # so the dataset files are downloaded to disk (robust in remote runtimes).
         ds = load_dataset(
-            dataset_name,
-            config_name,
+            "google/WaxalNLP",
+            "swa_tts",
             split=split,
             streaming=streaming,
-            trust_remote_code=trust_remote_code,
         )
-        ds = ds.cast_column("audio", Audio(sampling_rate=16000))
+
+        # Do NOT request automatic decoding here. Decoding in remote runtimes
+        # (Modal) can silently return None for many formats. We prefer to leave
+        # the dataset's `audio` column as metadata (paths/bytes) and decode
+        # manually in `precompute.py` where we can surface detailed errors.
         return ds
     except Exception as exc:
         logger.error("Failed to load WAXAL: %s", exc)

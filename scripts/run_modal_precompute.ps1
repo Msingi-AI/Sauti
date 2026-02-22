@@ -5,8 +5,8 @@ param(
 Write-Host "Ensure you have activated the venv and run 'modal login' first."
 Write-Host "Starting Modal precompute (will run modal_run.py precompute_max_items)"
 
-Write-Host "Running: modal run modal_run.py precompute_max_items --max-items $maxItems"
-modal run modal_run.py precompute_max_items --max-items $maxItems
+Write-Host "Running: modal run modal_run.py::precompute_max_items --max-items $maxItems"
+modal run modal_run.py::precompute_max_items --max-items $maxItems
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Modal precompute returned non-zero exit code: $LASTEXITCODE"
