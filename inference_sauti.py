@@ -7,6 +7,7 @@ image = (
     .apt_install("ffmpeg", "git")
     .pip_install(
         "TTS",
+        "transformers==4.33.3",
         "torch",
         "torchaudio",
         "scipy",
