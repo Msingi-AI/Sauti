@@ -1,6 +1,5 @@
 import os
 import modal
-from pathlib import Path
 
 # 1. Define the Modal Image
 image = (
@@ -15,6 +14,7 @@ image = (
         "scipy",
         "pandas",
         "huggingface_hub",
+        "trainer",
         "fsspec==2023.6.0",
         "polyglot", # For morphological analysis (example)
         "pyicu",
@@ -30,6 +30,25 @@ DATA_DIR = "/data"
 MODEL_DIR = "/data/models"
 DATASET_NAME = "google/WaxalNLP"
 CONFIG_NAME = "swa_tts"
+
+
+def find_latest_model_dir(base_dir: str) -> str:
+    """Return the newest directory that contains a config.json file."""
+    if not os.path.isdir(base_dir):
+        raise FileNotFoundError(f"Model directory does not exist: {base_dir}")
+
+    candidates = []
+    for root, _dirs, files in os.walk(base_dir):
+        if "config.json" in files:
+            candidates.append(root)
+
+    if not candidates:
+        raise FileNotFoundError(
+            f"No model directory with config.json found under: {base_dir}"
+        )
+
+    candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    return candidates[0]
 
 def swahili_morphological_analyzer(text):
     """
@@ -61,8 +80,6 @@ def swahili_morphological_analyzer(text):
 def train_sauti(hf_repo_id: str = None):
     from datasets import load_dataset
     import torch
-    import pandas as pd
-    from TTS.api import TTS
     from TTS.tts.configs.xtts_config import XttsConfig
     from TTS.tts.models.xtts import Xtts
     from TTS.utils.manage import ModelManager
@@ -178,12 +195,14 @@ def train_sauti(hf_repo_id: str = None):
         print(f"--- Pushing model to Hugging Face Hub: {hf_repo_id} ---")
         api = HfApi()
         token = os.environ.get("HF_TOKEN")
+        if not token:
+            raise RuntimeError(
+                "HF_TOKEN is missing. Configure Modal secret 'huggingface-secret'."
+            )
         
         try:
             create_repo(repo_id=hf_repo_id, token=token, exist_ok=True)
-            checkpoint_dirs = [d for d in os.listdir(MODEL_DIR) if os.path.isdir(os.path.join(MODEL_DIR, d))]
-            latest_dir = sorted(checkpoint_dirs)[-1]
-            latest_checkpoint_path = os.path.join(MODEL_DIR, latest_dir)
+            latest_checkpoint_path = find_latest_model_dir(MODEL_DIR)
             
             api.upload_folder(
                 folder_path=latest_checkpoint_path,
